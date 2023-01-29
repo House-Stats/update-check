@@ -24,7 +24,7 @@ class checkForUpdate():
     def _load_env(self):
         # Loads enviroment variables
         self._DB = environ.get("DBNAME", "house_data")
-        self._USERNAME = environ.get("POSTGRES_USERNAME")
+        self._USERNAME = environ.get("POSTGRES_USER")
         self._PASSWORD = environ.get("POSTGRES_PASSWORD")
         self._HOST = environ.get("POSTGRES_HOST")
         self._KAFKA = environ.get("KAFKA")
