@@ -83,7 +83,8 @@ class checkForUpdate():
         schedule.every(5).minutes.do(self._fetch_file)
         while True:
             schedule.run_pending()
-            time.sleep(30)
+            print("x")
+            time.sleep(45)
 
 if __name__ == "__main__":
     x = checkForUpdate()
