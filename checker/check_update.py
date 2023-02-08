@@ -5,8 +5,10 @@ from io import StringIO
 from os import environ
 from pickle import dumps
 
+import requests
 import schedule
 from confluent_kafka import Producer
+from dotenv import load_dotenv
 from psycopg2 import connect
 from requests import get
 
@@ -23,6 +25,7 @@ class checkForUpdate():
 
     def _load_env(self):
         # Loads enviroment variables
+        load_dotenv()
         self._DB = environ.get("DBNAME", "house_data")
         self._USERNAME = environ.get("POSTGRES_USER")
         self._PASSWORD = environ.get("POSTGRES_PASSWORD")
@@ -78,6 +81,35 @@ class checkForUpdate():
         self._cur.execute("""UPDATE settings SET data = %s
                           WHERE name='last_updated';""",
                           (time.time(),))
+        self._aggregate_cities()
+
+    def _aggregate_cities(self):
+        self._cur.execute("SELECT * FROM settings WHERE name = 'last_updated' OR name = 'last_aggregated_cities' ORDER BY name DESC;")
+        times = self._cur.fetchall()
+        if times[0][1] > times[1][1]:
+            self._cur.execute("SELECT * FROM settings WHERE data = 'WAITING';")
+            res = self._cur.fetchall()
+            if len(res) == 4:
+                self._cur.execute("SELECT area FROM areas WHERE area_type = 'town';")
+                cities = self._cur.fetchall()
+                self._cur.execute("""UPDATE settings SET data = 'true'
+                                    WHERE name='agregating_cities';""")
+                for city in cities:
+                    city = city[0]
+                    resp = requests.get(f"https://api.housestats.co.uk/api/v1/analyse/town/{city}")
+                    if city == cities[-1]:
+                        url = resp.json()["result"]
+                        while True:
+                            resp = requests.get(url)
+                            if resp.json()["status"] == "SUCCESS":
+                                self._cur.execute("""UPDATE settings SET data = %s
+                                                    WHERE name='last_aggregated_cities';""",
+                                                (time.time(),))
+                                self._cur.execute("""UPDATE settings SET data = 'false'
+                                                    WHERE name='agregating_cities';""")
+                                break
+                            else:
+                                time.sleep(5)
 
     def run(self):
         schedule.every(5).minutes.do(self._fetch_file)
@@ -87,4 +119,5 @@ class checkForUpdate():
 
 if __name__ == "__main__":
     x = checkForUpdate()
+    # x.aggregate_cities()
     x.run()
