@@ -81,31 +81,35 @@ class checkForUpdate():
         self._cur.execute("""UPDATE settings SET data = %s
                           WHERE name='last_updated';""",
                           (time.time(),))
-        self._aggregate_cities()
+        self._aggregate_counties()
 
-    def _aggregate_cities(self):
-        self._cur.execute("SELECT * FROM settings WHERE name = 'last_updated' OR name = 'last_aggregated_cities' ORDER BY name DESC;")
+    def aggregate_counties(self):
+        self._cur.execute("SELECT * FROM settings WHERE name = 'last_updated' OR name = 'last_aggregated_counties' ORDER BY name DESC;")
         times = self._cur.fetchall()
+        print(times)
         if float(times[0][1]) > float(times[1][1]):
             self._cur.execute("SELECT * FROM settings WHERE data = 'WAITING';")
             res = self._cur.fetchall()
             if len(res) == 4:
-                self._cur.execute("SELECT area FROM areas WHERE area_type = 'town';")
-                cities = self._cur.fetchall()[:5]
+                self._cur.execute("SELECT area FROM areas WHERE area_type = 'county';")
+                counties = self._cur.fetchall()
                 self._cur.execute("""UPDATE settings SET data = 'true'
-                                    WHERE name='agregating_cities';""")
+                                    WHERE name='agregating_counties';""")
                 self._conn.commit()
-                for city in cities:
-                    city = city[0]
-                    resp = requests.get(f"https://api.housestats.co.uk/api/v1/analyse/town/{city}")
-                    if city == cities[-1][0]:
+                print(len(counties))
+                for county in counties:
+                    county = county[0]
+                    print(county)
+                    resp = requests.get(f"https://api.housestats.co.uk/api/v1/analyse/county/{county}")
+                    print(resp.json())
+                    if county == counties[-1][0]:
                         url = resp.json()["result"]
                         while True:
                             resp = requests.get(url)
                             if resp.json()["status"] == "SUCCESS":
-                                self._cur.execute("UPDATE settings SET data = %s WHERE name='last_aggregated_cities';",
+                                self._cur.execute("UPDATE settings SET data = %s WHERE name='last_aggregated_counties';",
                                                 (time.time(),))
-                                self._cur.execute("UPDATE settings SET data = 'false' WHERE name='agregating_cities';")
+                                self._cur.execute("UPDATE settings SET data = 'false' WHERE name='agregating_counties';")
                                 self._conn.commit()
                                 break
                             else:
@@ -119,5 +123,5 @@ class checkForUpdate():
 
 if __name__ == "__main__":
     x = checkForUpdate()
-    # x.aggregate_cities()
-    x.run()
+    x.aggregate_counties()
+    # x.run()
