@@ -91,17 +91,15 @@ class checkForUpdate():
             self._cur.execute("SELECT * FROM settings WHERE data = 'WAITING';")
             res = self._cur.fetchall()
             if len(res) == 4:
-                self._cur.execute("SELECT area FROM areas WHERE area_type = 'county';")
+                self._cur.execute("SELECT area FROM areas WHERE area_type = 'area';")
                 counties = self._cur.fetchall()
                 self._cur.execute("""UPDATE settings SET data = 'true'
                                     WHERE name='agregating_counties';""")
                 self._conn.commit()
-                print(len(counties))
                 for county in counties:
-                    county = county[0]
-                    print(county)
-                    resp = requests.get(f"https://api.housestats.co.uk/api/v1/analyse/county/{county}")
-                    print(resp.json())
+                    county = county[0] if county != ('',) else 'CH'
+                    resp = requests.get(f"https://api.housestats.co.uk/api/v1/analyse/area/{county}")
+                    print(county, resp.json()["status"])
                     if county == counties[-1][0]:
                         url = resp.json()["result"]
                         while True:
