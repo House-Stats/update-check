@@ -81,7 +81,7 @@ class checkForUpdate():
         self._cur.execute("""UPDATE settings SET data = %s
                           WHERE name='last_updated';""",
                           (time.time(),))
-        self._aggregate_counties()
+        self.aggregate_counties()
 
     def aggregate_counties(self):
         self._cur.execute("SELECT * FROM settings WHERE name = 'last_updated' OR name = 'last_aggregated_counties' ORDER BY name DESC;")
