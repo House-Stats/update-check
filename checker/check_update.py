@@ -2,7 +2,7 @@ import time
 from csv import reader
 from hashlib import sha256
 from io import StringIO
-from os import environ
+import os
 from pickle import dumps
 
 import requests
@@ -26,11 +26,29 @@ class checkForUpdate():
     def _load_env(self):
         # Loads enviroment variables
         load_dotenv()
-        self._DB = environ.get("DBNAME", "house_data")
-        self._USERNAME = environ.get("POSTGRES_USER")
-        self._PASSWORD = environ.get("POSTGRES_PASSWORD")
-        self._HOST = environ.get("POSTGRES_HOST")
-        self._KAFKA = environ.get("KAFKA")
+        self._DB = self.manage_sensitive("DBNAME", "house_data")
+        self._USERNAME = self.manage_sensitive("POSTGRES_USER")
+        self._PASSWORD = self.manage_sensitive("POSTGRES_PASSWORD")
+        self._HOST = self.manage_sensitive("POSTGRES_HOST")
+        self._KAFKA = self.manage_sensitive("KAFKA")
+
+    def manage_sensitive(self, name, default= None):
+        v1 = os.environ.get(name)
+
+        secret_fpath = f'/run/secrets/{name}'
+        existence = os.path.exists(secret_fpath)
+
+        if v1 is not None:
+            return v1
+
+        if existence:
+            v2 = open(secret_fpath).read().rstrip('\n')
+            return v2
+
+        if all([v1 is None, not existence]) and default is None:
+            raise KeyError(f'{name} environment variable is not defined')
+        elif default is not None:
+            return default
 
     def _fetch_file(self):
         print("fetching file")
@@ -82,11 +100,19 @@ class checkForUpdate():
                           WHERE name='last_updated';""",
                           (time.time(),))
         self.aggregate_counties()
+        resp = requests.get("https://api.housestats.co.uk/api/v1/analyse/COUNTRY/ALL")
+        while True:
+            checker = requests.get(resp.json()["result"])
+            if checker["status"] != "PENDING":
+                break
+            else:
+                time.sleep(5)
+
 
     def aggregate_counties(self):
         self._cur.execute("SELECT * FROM settings WHERE name = 'last_updated' OR name = 'last_aggregated_counties' ORDER BY name DESC;")
         times = self._cur.fetchall()
-        print(times)
+
         if float(times[0][1]) > float(times[1][1]):
             self._cur.execute("SELECT * FROM settings WHERE data = 'WAITING';")
             res = self._cur.fetchall()
