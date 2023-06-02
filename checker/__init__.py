@@ -1,5 +1,7 @@
 from check_update import checkForUpdate
+import schedule
 import sentry_sdk
+import time
 
 if __name__ == "__main__":
     sentry_sdk.init(
@@ -7,4 +9,7 @@ if __name__ == "__main__":
         traces_sample_rate=1.0
     )
     x = checkForUpdate()
-    x.run()
+    schedule.every(5).minutes.do(x.run)
+    while True:
+        schedule.run_pending()
+        time.sleep(60)
