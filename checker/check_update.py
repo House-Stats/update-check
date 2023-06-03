@@ -8,8 +8,8 @@ from hashlib import sha256
 from io import StringIO
 from typing import List
 
-import requests
 from asyncpg import create_pool
+from celery import Celery
 from dotenv import load_dotenv
 from requests import get
 
@@ -20,6 +20,10 @@ class checkForUpdate():
         self._load_env()
         self._postcode_re = re.compile("^(?:(?P<a1>[Gg][Ii][Rr])(?P<d1>) (?P<s1>0)(?P<u1>[Aa]{2}))|(?:(?:(?:(?P<a2>[A-Za-z])(?P<d2>[0-9]{1,2}))|(?:(?:(?P<a3>[A-Za-z][A-Ha-hJ-Yj-y])(?P<d3>[0-9]{1,2}))|(?:(?:(?P<a4>[A-Za-z])(?P<d4>[0-9][A-Za-z]))|(?:(?P<a5>[A-Za-z][A-Ha-hJ-Yj-y])(?P<d5>[0-9]?[A-Za-z]))))) (?P<s2>[0-9])(?P<u2>[A-Za-z]{2}))$", flags=re.IGNORECASE)
         self._areas = ["postcode", "street", "town", "district", "county", "outcode", "area", "sector"]
+        self._celery = Celery('worker',
+                broker = self._CELERY_BROKER_URL,
+                backend = self._CELERY_RESULT_BACKEND
+                )
 
     async def _connect_db(self):
         self._pool = await create_pool(f"postgresql://{self._USERNAME}:{self._PASSWORD}@{self._HOST}/{self._DB}", max_size=450)
@@ -31,6 +35,8 @@ class checkForUpdate():
         self._USERNAME = self.manage_sensitive("POSTGRES_USER")
         self._PASSWORD = self.manage_sensitive("POSTGRES_PASSWORD")
         self._HOST = self.manage_sensitive("POSTGRES_HOST")
+        self._CELERY_BROKER_URL = self.manage_sensitive("CELERY_BROKER_URL")
+        self._CELERY_RESULT_BACKEND = self.manage_sensitive("CELERY_RESULT_BACKEND")
 
     def manage_sensitive(self, name, default = None):
         v1 = os.environ.get(name)
@@ -65,7 +71,7 @@ class checkForUpdate():
             return True
         else:
             print("No new file yet")
-            return True
+            return False
 
     async def _update_database(self, file, file_hash):
         # await self._send_file_db(file)
@@ -155,26 +161,24 @@ class checkForUpdate():
         except IndexError:
             return ["","",""]
 
-    async def _aggregate_counties(self):
+    async def _update_cache(self):
         async with self._pool.acquire() as connection:
-            counties = await connection.fetch("SELECT area FROM areas WHERE area_type = 'area' AND area <> '';")
-        result = []
-        for county in counties:
-            county = county['area']
-            resp = requests.get(f"https://api.housestats.co.uk/api/v1/analyse/area/{county}")
-            result.append(resp.json()["result"])
-            print(resp.status_code, county)
-
-        for res in result:
+            areas = await connection.fetch("SELECT area, area_type FROM areas WHERE area_type = 'area' OR area_type = 'outcode' OR area_type = 'county' AND area <> '';")
+        tasks = []
+        num_tasks = len(areas)
+        for area in areas:
+            task = self._celery.send_task("worker.analyse", args=[area[0], area[1]])
+            tasks.append(task.id)
+        done = 0
+        for task_id in tasks:
+            task = self._celery.AsyncResult(task_id)
             while True:
-                resp = requests.get(res)
-                if resp.status_code < 400:
-                    if resp.json()["status"] == "SUCCESS":
-                        break
-                    else:
-                        time.sleep(5)
+                if task.state == "PENDING":
+                    time.sleep(0.5)
                 else:
-                    time.sleep(10)
+                    done += 1
+                    break
+            print(f"{done}/{num_tasks} tasks done")
 
     def run(self):
         asyncio.run(self.do_everything())
@@ -182,7 +186,7 @@ class checkForUpdate():
     async def do_everything(self):
         updated = await self._fetch_file()
         if updated:
-            await self._aggregate_counties()
+            await self._update_cache()
 
 if __name__ == "__main__":
     x = checkForUpdate()
