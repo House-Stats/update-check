@@ -74,7 +74,7 @@ class checkForUpdate():
             return False
 
     async def _update_database(self, file, file_hash):
-        # await self._send_file_db(file)
+        await self._send_file_db(file)
         await self._update_hash(file_hash)
 
     async def _update_hash(self, file_hash) -> None:
