@@ -26,7 +26,7 @@ class checkForUpdate():
                 )
 
     async def _connect_db(self):
-        self._pool = await create_pool(f"postgresql://{self._USERNAME}:{self._PASSWORD}@{self._HOST}/{self._DB}", max_size=400)
+        self._pool = await create_pool(f"postgresql://{self._USERNAME}:{self._PASSWORD}@{self._HOST}/{self._DB}", max_size=500)
 
     def _load_env(self):
         # Loads enviroment variables
